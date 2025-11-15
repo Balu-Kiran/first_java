@@ -64,13 +64,13 @@
         <!-- Release Repository -->
         <repository>
             <id>maven-releases</id>
-	    <url>http://16.16.142.88/repository/maven-releases/</url>
+	    <url>http://16.171.71.251:8081/repository/maven-releases/</url>
         </repository>
 
         <!-- Snapshot Repository -->
         <snapshotRepository>
             <id>maven-snapshots</id>
-            <url>http://16.16.142.88:8081/repository/maven-snapshots/</url>
+            <url>http://16.171.71.251:8081/repository/maven-snapshots/</url>
         </snapshotRepository>
     </distributionManagement>
 
