@@ -1,0 +1,76 @@
+name: Java CI-CD Pipeline
+ 
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "**" ]
+ 
+env:
+  NEXUS_URL: 3.83.97.95:8081
+  NEXUS_REPO_RELEASE: maven-releases
+  NEXUS_REPO_SNAPSHOT: maven-snapshots
+ 
+jobs:
+  build:
+    runs-on: ubuntu-latest
+ 
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v3
+ 
+    - name: Setup JDK 17
+      uses: actions/setup-java@v3
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: maven
+ 
+    - name: Build with Maven
+      run: mvn clean compile
+ 
+    - name: SonarQube Scan
+      if: github.ref == 'refs/heads/master'
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR }}
+      run: |
+        mvn sonar:sonar \
+          -Dsonar.projectKey=java-project \
+          -Dsonar.host.url=http://3.83.97.95:9000 \
+          -Dsonar.login=$SONAR_TOKEN
+ 
+    - name: Set Build Version
+      id: vars
+      run: |
+        if [[ "${GITHUB_REF##*/}" == "master" ]]; then
+          BUILD_VERSION="1.0.0"
+          DEPLOY_REPO="${{ env.NEXUS_REPO_RELEASE }}"
+        else
+          BUILD_VERSION="1.0-${GITHUB_RUN_NUMBER}-SNAPSHOT"
+          DEPLOY_REPO="${{ env.NEXUS_REPO_SNAPSHOT }}"
+        fi
+        echo "BUILD_VERSION=$BUILD_VERSION" >> $GITHUB_ENV
+        echo "DEPLOY_REPO=$DEPLOY_REPO" >> $GITHUB_ENV
+ 
+    - name: Build WAR file
+      run: mvn clean package -Dbuild.version=${{ env.BUILD_VERSION }} -DskipTests
+ 
+    - name: Upload WAR to Nexus
+      env:
+        NEXUS_USER: ${{ secrets.NEXUSUNAME }}
+        NEXUS_PASS: ${{ secrets.NEXUSPW }}
+      run: |
+        mvn deploy -Dbuild.version=${{ env.BUILD_VERSION }} -DskipTests \
+          -DaltDeploymentRepository=deployment::default::http://${NEXUS_USER}:${NEXUS_PASS}@${{ env.NEXUS_URL }}/repository/${{ env.DEPLOY_REPO }}
+ 
+    - name: Build Docker Image
+      run: docker build -t siriya27/java-app:${{ env.BUILD_VERSION }} .
+ 
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERUNAME }}
+        password: ${{ secrets.DOCKERPW }}
+ 
+    - name: Push Docker Image
+      run: docker push siriya27/java-app:${{ env.BUILD_VERSION }}
