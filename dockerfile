@@ -1,40 +1,21 @@
-# Use Tomcat 9 with JDK 17
-FROM tomcat:9-jdk17
+# 1. Build Stage
+FROM maven:3.9.6-eclipse-temurin-21 AS builder
 
-# Nexus connection info (static)
-ENV NEXUS_URL=http://51.20.35.90:8081
-ENV GROUP_PATH=com/aja/first-servlet-app
-ENV VERSION=1.0-SNAPSHOT
-ENV NEXUS_REPO=maven-snapshots
+WORKDIR /app
 
-# Accept username/password from --build-arg
-ARG NEXUS_USER
-ARG NEXUS_PASS
+COPY pom.xml .
+RUN mvn -B dependency:go-offline
 
-# Install curl
-RUN apt-get update && apt-get install -y curl && apt-get clean
+COPY src ./src
+RUN mvn -B clean package -DskipTests
 
-# Clean default webapps
-RUN rm -rf /usr/local/tomcat/webapps/*
+# 2. Run Stage
+FROM eclipse-temurin:21-jre
 
-# Copy base webapps
-RUN cp -r /usr/local/tomcat/webapps.dist/* /usr/local/tomcat/webapps/
+WORKDIR /app
 
-# Download latest snapshot WAR
-RUN SNAP_VERSION=$(curl -s -u "$NEXUS_USER:$NEXUS_PASS" \
-      $NEXUS_URL/repository/$NEXUS_REPO/$GROUP_PATH/$VERSION/maven-metadata.xml \
-      | awk '/<snapshotVersion>/{flag=1} /<\/snapshotVersion>/{flag=0} flag' \
-      | grep -A1 '<extension>war</extension>' \
-      | grep -oPm1 "(?<=<value>)[^<]+") && \
-    WAR_FILE="first-servlet-app-$SNAP_VERSION.war" && \
-    echo "Resolved WAR = $WAR_FILE" && \
-    curl -u "$NEXUS_USER:$NEXUS_PASS" \
-      -o /usr/local/tomcat/webapps/app.war \
-      $NEXUS_URL/repository/$NEXUS_REPO/$GROUP_PATH/$VERSION/$WAR_FILE
+COPY --from=builder /app/target/*.war app.war
 
-# Expose Tomcat port
 EXPOSE 8080
-
-# Start Tomcat
-CMD ["catalina.sh", "run"]
+ENTRYPOINT ["java", "-war", "app.war"]
 
